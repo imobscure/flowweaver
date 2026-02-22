@@ -1,7 +1,10 @@
 [project]
 name = "flowweaver"
 version = "0.1.0"
-description = "Add your description here"
+description = "Lightweight DAG-based workflow orchestrator"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
+
+[tool.setuptools.package-data]
+flowweaver = ["py.typed"]
