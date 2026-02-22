@@ -1,6 +1,13 @@
-"""FlowWeaver - Lightweight DAG-based workflow orchestration."""
+"""FlowWeaver - Lightweight DAG-based workflow orchestration with production-grade features."""
 
-from flowweaver.core import Task, TaskStatus, Workflow
+from flowweaver.core import (
+    Task,
+    TaskStatus,
+    Workflow,
+    StateBackend,
+    InMemoryStateBackend,
+    task,
+)
 from flowweaver.executors import (
     BaseExecutor,
     SequentialExecutor,
@@ -8,11 +15,14 @@ from flowweaver.executors import (
     AsyncExecutor,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "Task",
     "TaskStatus",
     "Workflow",
+    "StateBackend",
+    "InMemoryStateBackend",
+    "task",
     "BaseExecutor",
     "SequentialExecutor",
     "ThreadedExecutor",

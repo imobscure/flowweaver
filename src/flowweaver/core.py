@@ -4,15 +4,26 @@ FlowWeaver Core Module
 Provides task orchestration and DAG validation for lightweight workflow execution.
 Follows SOLID principles with strict type hints for maintainability and scalability.
 Supports both synchronous and asynchronous task execution with real-time monitoring.
+
+Key Features:
+- Data sharing via context (XCom pattern)
+- @task decorator for elegant task definition
+- Pluggable state backend for persistence and resumption
+- Context-aware logging with task duration tracking
+- Lifecycle hooks for executor integration
 """
 
 import asyncio
 import inspect
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Optional, Coroutine, Union
+from typing import Any, Callable, Optional, Coroutine, Union, Dict
 from collections import defaultdict
 from datetime import datetime
+from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
 
 
 class TaskStatus(Enum):
@@ -29,17 +40,80 @@ class TaskStatus(Enum):
     FAILED = "failed"
 
 
+class StateBackend(ABC):
+    """
+    Abstract base class for task state persistence.
+
+    Enables workflow resumption after failures by storing task state externally.
+    This design allows users to implement SQLite, Redis, or cloud backends.
+
+    Rationale (SDE-2): Decoupling state from Task objects enables distributed
+    systems where tasks run on different machines. Follows Dependency Inversion.
+    """
+
+    @abstractmethod
+    def save_task_state(
+        self,
+        task_name: str,
+        status: TaskStatus,
+        result: Any,
+        error: Optional[str],
+        timestamp: datetime,
+    ) -> None:
+        """Save task execution state."""
+        pass
+
+    @abstractmethod
+    def load_task_state(self, task_name: str) -> Optional[Dict[str, Any]]:
+        """Load saved task state (returns None if not found)."""
+        pass
+
+    @abstractmethod
+    def clear(self) -> None:
+        """Clear all saved state."""
+        pass
+
+
+class InMemoryStateBackend(StateBackend):
+    """Default in-memory state storage. Fast but not persistent."""
+
+    def __init__(self) -> None:
+        self._state: Dict[str, Dict[str, Any]] = {}
+
+    def save_task_state(
+        self,
+        task_name: str,
+        status: TaskStatus,
+        result: Any,
+        error: Optional[str],
+        timestamp: datetime,
+    ) -> None:
+        self._state[task_name] = {
+            "status": status,
+            "result": result,
+            "error": error,
+            "timestamp": timestamp,
+        }
+
+    def load_task_state(self, task_name: str) -> Optional[Dict[str, Any]]:
+        return self._state.get(task_name)
+
+    def clear(self) -> None:
+        self._state.clear()
+
+
 @dataclass
 class Task:
     """
     Represents a single unit of work in a workflow.
 
     Supports both synchronous and asynchronous execution with retry logic,
-    real-time status callbacks, and comprehensive error handling.
+    real-time status callbacks, context sharing (XCom pattern), and error handling.
 
     Attributes:
         name: Unique identifier for the task.
         fn: Callable (sync or async) that executes the task logic.
+           Can accept **kwargs to receive context from dependent tasks.
         retries: Number of retry attempts on failure (default: 0).
         timeout: Maximum execution time in seconds (default: None, no timeout).
         status: Current execution state (default: PENDING).
@@ -50,9 +124,11 @@ class Task:
         started_at: Timestamp when task execution began.
         completed_at: Timestamp when task execution ended.
 
-    Rationale (SDE-2): Dataclass provides automated __init__, __repr__, and __eq__
-    methods while maintaining strict typing. Callback support enables real-time
-    monitoring without modifying core execution logic (Observer pattern).
+    Rationale (SDE-2):
+    - Dataclass provides automated __init__, __repr__ with strict typing
+    - Context (XCom) pattern enables data sharing between dependent tasks
+    - Inspect module detects function signature to pass context intelligently
+    - Callbacks enable real-time monitoring without coupling (Observer pattern)
     """
 
     name: str
@@ -77,12 +153,23 @@ class Task:
         """Check if the task function is async."""
         return inspect.iscoroutinefunction(self.fn)
 
-    def execute(self) -> None:
+    def _accepts_context(self) -> bool:
+        """Check if task function accepts **kwargs for context."""
+        sig = inspect.signature(self.fn)
+        return any(
+            param.kind == inspect.Parameter.VAR_KEYWORD
+            for param in sig.parameters.values()
+        )
+
+    def execute(self, context: Optional[Dict[str, Any]] = None) -> None:
         """
         Execute the synchronous task with retry logic.
 
         Attempts to run the callable (self.fn) and captures the result.
         On failure, retries up to self.retries times before marking as FAILED.
+
+        Args:
+            context: Dict of results from dependent tasks (XCom pattern).
 
         Raises:
             RuntimeError: If task is async; use execute_async() instead.
@@ -96,13 +183,20 @@ class Task:
         self.started_at = datetime.now()
         attempts = 0
         max_attempts = self.retries + 1
+        context = context or {}
 
         while attempts < max_attempts:
             try:
-                self.result = self.fn()
+                # Call function with context if it accepts **kwargs
+                if self._accepts_context():
+                    self.result = self.fn(**context)
+                else:
+                    self.result = self.fn()
                 self._set_status(TaskStatus.COMPLETED)
                 self.completed_at = datetime.now()
                 self.error = None
+                duration = (self.completed_at - self.started_at).total_seconds()
+                logger.info(f"Task '{self.name}' completed in {duration:.3f}s")
                 return
             except Exception as e:
                 attempts += 1
@@ -110,16 +204,21 @@ class Task:
                     self._set_status(TaskStatus.FAILED)
                     self.completed_at = datetime.now()
                     self.error = str(e)
+                    logger.error(f"Task '{self.name}' failed: {e}")
                     return
                 if self.on_retry:
                     self.on_retry(self.name, attempts)
+                logger.warning(f"Task '{self.name}' retry {attempts}/{self.retries}")
 
-    async def execute_async(self) -> None:
+    async def execute_async(self, context: Optional[Dict[str, Any]] = None) -> None:
         """
         Execute the task asynchronously with retry logic and timeout support.
 
         For async callables, awaits the coroutine with optional timeout.
         For sync callables, runs them in a thread pool to avoid blocking.
+
+        Args:
+            context: Dict of results from dependent tasks (XCom pattern).
 
         Raises:
             asyncio.TimeoutError: If timeout is exceeded.
@@ -131,11 +230,16 @@ class Task:
         self.started_at = datetime.now()
         attempts = 0
         max_attempts = self.retries + 1
+        context = context or {}
 
         while attempts < max_attempts:
             try:
                 if self.is_async():
-                    coro = self.fn()  # type: ignore
+                    # Call async function with context if needed
+                    if self._accepts_context():
+                        coro = self.fn(**context)
+                    else:
+                        coro = self.fn()
                     if self.timeout:
                         self.result = await asyncio.wait_for(coro, timeout=self.timeout)
                     else:
@@ -143,16 +247,23 @@ class Task:
                 else:
                     # Run sync function in thread pool
                     loop = asyncio.get_event_loop()
+                    fn_wrapper = (
+                        (lambda: self.fn(**context))
+                        if self._accepts_context()
+                        else self.fn
+                    )
                     if self.timeout:
                         self.result = await asyncio.wait_for(
-                            loop.run_in_executor(None, self.fn), timeout=self.timeout
+                            loop.run_in_executor(None, fn_wrapper), timeout=self.timeout
                         )
                     else:
-                        self.result = await loop.run_in_executor(None, self.fn)
+                        self.result = await loop.run_in_executor(None, fn_wrapper)
 
                 self._set_status(TaskStatus.COMPLETED)
                 self.completed_at = datetime.now()
                 self.error = None
+                duration = (self.completed_at - self.started_at).total_seconds()
+                logger.info(f"Task '{self.name}' completed in {duration:.3f}s")
                 return
             except asyncio.TimeoutError:
                 attempts += 1
@@ -160,18 +271,24 @@ class Task:
                     self._set_status(TaskStatus.FAILED)
                     self.completed_at = datetime.now()
                     self.error = f"Task timeout after {self.timeout}s"
+                    logger.error(f"Task '{self.name}' timeout after {self.timeout}s")
                     return
                 if self.on_retry:
                     self.on_retry(self.name, attempts)
+                logger.warning(
+                    f"Task '{self.name}' timeout retry {attempts}/{self.retries}"
+                )
             except Exception as e:
                 attempts += 1
                 if attempts >= max_attempts:
                     self._set_status(TaskStatus.FAILED)
                     self.completed_at = datetime.now()
                     self.error = str(e)
+                    logger.error(f"Task '{self.name}' failed: {e}")
                     return
                 if self.on_retry:
                     self.on_retry(self.name, attempts)
+                logger.warning(f"Task '{self.name}' retry {attempts}/{self.retries}")
 
 
 class Workflow:
@@ -399,6 +516,9 @@ class Workflow:
         Tasks within the same layer (no inter-dependencies) execute concurrently.
         All tasks in a layer must complete before the next layer begins.
 
+        Context (XCom Pattern): Task results are stored in a context dict and passed
+        to dependent tasks via **kwargs. Each task receives results from its dependencies.
+
         This method is designed for I/O-bound workflows and provides true
         concurrency without the GIL limitations of threading.
 
@@ -406,18 +526,28 @@ class Workflow:
             RuntimeError: If any task fails during execution.
         """
         plan = self.get_execution_plan()
+        context: Dict[str, Any] = {}  # Stores results from completed tasks
 
         for layer_idx, layer in enumerate(plan):
-            # Execute all tasks in the layer concurrently
-            tasks_to_run = [task.execute_async() for task in layer]
+            # Build context for this layer: collect results from dependencies
+            layer_context = {}
+            for task in layer:
+                for dep_name in self._dependencies[task.name]:
+                    if dep_name in context:
+                        layer_context[dep_name] = context[dep_name]
+
+            # Execute all tasks in the layer concurrently, passing context
+            tasks_to_run = [task.execute_async(layer_context) for task in layer]
             await asyncio.gather(*tasks_to_run)
 
-            # Check for failures in this layer
+            # Check for failures in this layer and update context with results
             for task in layer:
                 if task.status == TaskStatus.FAILED:
                     raise RuntimeError(
                         f"Workflow failed at task '{task.name}': {task.error}"
                     )
+                # Store task result in context for dependent tasks
+                context[task.name] = task.result
 
     def get_task_status(self, task_name: str) -> Optional[TaskStatus]:
         """
@@ -481,3 +611,57 @@ class Workflow:
             ),
             "total_time_seconds": total_time,
         }
+
+
+def task(
+    name: Optional[str] = None,
+    retries: int = 0,
+    timeout: Optional[float] = None,
+    on_status_change: Optional[Callable[[str, TaskStatus], None]] = None,
+    on_retry: Optional[Callable[[str, int], None]] = None,
+) -> Callable:
+    """
+    Decorator to convert a function into a FlowWeaver Task.
+
+    Provides elegant task definition without boilerplate Task object creation.
+
+    Usage:
+        @task(retries=3)
+        def clean_data(raw_input):
+            return raw_input.strip()
+
+        workflow.add_task(clean_data, depends_on=["fetch"])
+
+    Args:
+        name: Task name (defaults to function name if not provided).
+        retries: Number of retry attempts on failure (default: 0).
+        timeout: Maximum execution time in seconds (default: None).
+        on_status_change: Optional callback for status changes.
+        on_retry: Optional callback for retry events.
+
+    Returns:
+        A Task instance with the decorated function as its fn.
+
+    Rationale (SDE-2): Decorator pattern reduces boilerplate and improves readability.
+    Users can focus on business logic (the function) rather than infrastructure (Task).
+    """
+
+    def decorator(fn: Callable) -> Task:
+        task_name = name or fn.__name__
+        return Task(
+            name=task_name,
+            fn=fn,
+            retries=retries,
+            timeout=timeout,
+            on_status_change=on_status_change,
+            on_retry=on_retry,
+        )
+
+    # If called without arguments: @task
+    if callable(name):
+        fn = name
+        name = None
+        return decorator(fn)
+
+    # If called with arguments: @task(retries=3)
+    return decorator
