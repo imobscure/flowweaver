@@ -154,12 +154,16 @@ class Task:
         return inspect.iscoroutinefunction(self.fn)
 
     def _accepts_context(self) -> bool:
-        """Check if task function accepts **kwargs for context."""
+        """Check if task function accepts context params (either **kwargs or specific params)."""
         sig = inspect.signature(self.fn)
-        return any(
+        # Accept context if function has **kwargs
+        has_var_keyword = any(
             param.kind == inspect.Parameter.VAR_KEYWORD
             for param in sig.parameters.values()
         )
+        # Also accept if function has any parameters (besides 'self')
+        has_params = any(param.name != "self" for param in sig.parameters.values())
+        return has_var_keyword or has_params
 
     def execute(self, context: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -426,6 +430,10 @@ class Workflow:
             List of task names this task depends on.
         """
         return self._dependencies.get(task_name, [])
+
+    def get_task_dependencies(self, task_name: str) -> list[str]:
+        """Alias for get_dependencies() - returns task's direct dependencies."""
+        return self.get_dependencies(task_name)
 
     def get_all_tasks(self) -> dict[str, Task]:
         """
