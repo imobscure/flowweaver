@@ -138,6 +138,8 @@ class SequentialExecutor(BaseExecutor):
 
                     # Store result in context for dependent tasks
                     context[task.name] = task.result
+                    # Also store in workflow's thread-safe result store (XCom pattern)
+                    workflow._store_task_result(task.name, task.result)
                     logger.debug(f"Task '{task.name}' completed successfully")
 
             logger.info(f"Successfully completed workflow: {workflow.name}")
@@ -249,6 +251,8 @@ class ThreadedExecutor(BaseExecutor):
                                 raise RuntimeError(error_msg)
                             # Store result in context for dependent tasks
                             context[task.name] = task.result
+                            # Also store in workflow's thread-safe result store (XCom pattern)
+                            workflow._store_task_result(task.name, task.result)
                             logger.debug(f"Task '{task.name}' completed")
                         except Exception as e:
                             logger.error(

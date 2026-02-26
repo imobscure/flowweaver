@@ -14,6 +14,11 @@ from flowweaver.executors import (
     ThreadedExecutor,
     AsyncExecutor,
 )
+from flowweaver.storage import (
+    BaseStateStore,
+    JSONStateStore,
+    SQLiteStateStore,
+)
 
 __version__ = "0.3.0"
 __all__ = [
@@ -27,4 +32,7 @@ __all__ = [
     "SequentialExecutor",
     "ThreadedExecutor",
     "AsyncExecutor",
+    "BaseStateStore",
+    "JSONStateStore",
+    "SQLiteStateStore",
 ]

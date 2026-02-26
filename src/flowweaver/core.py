@@ -16,6 +16,7 @@ Key Features:
 import asyncio
 import inspect
 import logging
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Optional, Coroutine, Union, Dict
@@ -154,16 +155,14 @@ class Task:
         return inspect.iscoroutinefunction(self.fn)
 
     def _accepts_context(self) -> bool:
-        """Check if task function accepts context params (either **kwargs or specific params)."""
+        """Check if task function accepts context params via **kwargs."""
         sig = inspect.signature(self.fn)
-        # Accept context if function has **kwargs
+        # Only accept context if function explicitly has **kwargs parameter
         has_var_keyword = any(
             param.kind == inspect.Parameter.VAR_KEYWORD
             for param in sig.parameters.values()
         )
-        # Also accept if function has any parameters (besides 'self')
-        has_params = any(param.name != "self" for param in sig.parameters.values())
-        return has_var_keyword or has_params
+        return has_var_keyword
 
     def execute(self, context: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -318,6 +317,8 @@ class Workflow:
         self.name = name
         self._tasks: dict[str, Task] = {}
         self._dependencies: dict[str, list[str]] = defaultdict(list)
+        self._result_store: dict[str, Any] = {}
+        self._store_lock = threading.RLock()  # Thread-safe result storage
 
     def add_task(self, task: Task, depends_on: Optional[list[str]] = None) -> None:
         """
@@ -584,6 +585,52 @@ class Workflow:
             KeyError: If task doesn't exist.
         """
         return self._tasks[task_name].result
+
+    def _store_task_result(self, task_name: str, result: Any) -> None:
+        """
+        Store task result in thread-safe result store (XCom pattern).
+
+        Args:
+            task_name: The name of the task.
+            result: The result to store.
+        """
+        with self._store_lock:
+            self._result_store[task_name] = result
+
+    def _get_stored_result(self, task_name: str) -> Any:
+        """
+        Retrieve task result from thread-safe result store.
+
+        Args:
+            task_name: The name of the task.
+
+        Returns:
+            The stored result, or None if not found.
+        """
+        with self._store_lock:
+            return self._result_store.get(task_name)
+
+    def _build_context_for_task(self, task_name: str) -> Dict[str, Any]:
+        """
+        Build context dict from dependent task results for XCom pattern.
+
+        Args:
+            task_name: The task to build context for.
+
+        Returns:
+            Dict mapping dependency names to their results.
+        """
+        context = {}
+        with self._store_lock:
+            for dep_name in self._dependencies[task_name]:
+                if dep_name in self._result_store:
+                    context[dep_name] = self._result_store[dep_name]
+        return context
+
+    def _clear_result_store(self) -> None:
+        """Clear all stored results (for workflow reset or testing)."""
+        with self._store_lock:
+            self._result_store.clear()
 
     def get_workflow_stats(self) -> dict[str, Any]:
         """
