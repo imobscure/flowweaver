@@ -15,6 +15,7 @@ Features:
 import asyncio
 import concurrent.futures
 import logging
+import threading
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Any, Dict
 
@@ -22,6 +23,12 @@ from .core import Task, TaskStatus, Workflow
 
 # Configure logging for the module
 logger = logging.getLogger(__name__)
+
+# Optional import for type hints
+try:
+    from .storage import BaseStateStore
+except ImportError:
+    BaseStateStore = None  # Optional dependency
 
 
 class BaseExecutor(ABC):
@@ -35,6 +42,9 @@ class BaseExecutor(ABC):
 
     Lifecycle hooks enable integration with monitoring systems (Slack, Datadog, etc.)
     without modifying core execution logic (Open/Closed Principle).
+
+    State store enables workflow resumability - if a task is already COMPLETED,
+    the executor can skip it and load the result from persistent storage.
     """
 
     def __init__(
@@ -42,18 +52,24 @@ class BaseExecutor(ABC):
         on_workflow_start: Optional[Callable[[str], None]] = None,
         on_workflow_success: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_workflow_failure: Optional[Callable[[str, str], None]] = None,
+        state_store: Optional[Any] = None,  # BaseStateStore instance
     ):
         """
-        Initialize the BaseExecutor with optional lifecycle hooks.
+        Initialize the BaseExecutor with optional lifecycle hooks and state store.
 
         Args:
             on_workflow_start: Called when workflow execution begins (receives workflow name).
             on_workflow_success: Called on success (receives workflow name and stats dict).
             on_workflow_failure: Called on failure (receives workflow name and error message).
+            state_store: Optional StateStore instance for task resumability.
+
+        Rationale: StateStore enables resuming interrupted workflows without re-executing
+        already-completed tasks, critical for production workflows.
         """
         self.on_workflow_start = on_workflow_start
         self.on_workflow_success = on_workflow_success
         self.on_workflow_failure = on_workflow_failure
+        self.state_store = state_store
 
     @abstractmethod
     def execute(self, workflow: Workflow) -> None:
@@ -67,6 +83,51 @@ class BaseExecutor(ABC):
             RuntimeError: If any task in the workflow fails.
         """
         pass
+
+    def _should_skip_task(self, task: Task) -> bool:
+        """Check if task is already completed in state store."""
+        if not self.state_store:
+            return False
+        try:
+            state = self.state_store.load_task_state(task.name)
+            if state and state.get("status") == TaskStatus.COMPLETED:
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _restore_task_from_store(self, task: Task) -> bool:
+        """Restore a completed task's result from state store. Returns True if restored."""
+        if not self.state_store:
+            return False
+        try:
+            state = self.state_store.load_task_state(task.name)
+            if state and state.get("status") == TaskStatus.COMPLETED:
+                task.result = state.get("result")
+                task.status = TaskStatus.COMPLETED
+                task.completed_at = state.get("timestamp")
+                logger.debug(
+                    f"Task '{task.name}' restored from store (skipped execution)"
+                )
+                return True
+        except Exception as e:
+            logger.warning(f"Failed to restore task '{task.name}': {e}")
+        return False
+
+    def _save_task_to_store(self, task: Task) -> None:
+        """Save completed task to state store."""
+        if not self.state_store:
+            return
+        try:
+            self.state_store.save_task_state(
+                task_name=task.name,
+                status=task.status,
+                result=task.result,
+                error=task.error,
+                timestamp=task.completed_at,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save task '{task.name}' to store: {e}")
 
     def _trigger_start(self, workflow_name: str) -> None:
         """Trigger on_workflow_start hook."""
@@ -121,6 +182,13 @@ class SequentialExecutor(BaseExecutor):
                 )
 
                 for task in layer:
+                    # Check if task is already completed and can be skipped
+                    if self._restore_task_from_store(task):
+                        # Task was restored from store, update context and continue
+                        context[task.name] = task.result
+                        workflow._store_task_result(task.name, task.result)
+                        continue
+
                     # Build context for this task: collect results from dependencies
                     task_context = {}
                     for dep_name in workflow.get_task_dependencies(task.name):
@@ -140,6 +208,8 @@ class SequentialExecutor(BaseExecutor):
                     context[task.name] = task.result
                     # Also store in workflow's thread-safe result store (XCom pattern)
                     workflow._store_task_result(task.name, task.result)
+                    # Save to persistent state store for resumability
+                    self._save_task_to_store(task)
                     logger.debug(f"Task '{task.name}' completed successfully")
 
             logger.info(f"Successfully completed workflow: {workflow.name}")
@@ -172,16 +242,22 @@ class ThreadedExecutor(BaseExecutor):
     - If any task fails, pending tasks in the layer are cancelled (fail-fast)
     """
 
-    def __init__(self, max_workers: Optional[int] = None):
+    def __init__(
+        self,
+        max_workers: Optional[int] = None,
+        state_store: Optional[Any] = None,
+    ):
         """
         Initialize the ThreadedExecutor.
 
         Args:
             max_workers: Maximum number of worker threads. If None,
                         ThreadPoolExecutor will use CPU count or a sensible default.
+            state_store: Optional StateStore for task resumability.
         """
-        super().__init__()
+        super().__init__(state_store=state_store)
         self.max_workers = max_workers
+        self._context_lock = threading.RLock()  # Protect shared context dict
 
     def execute(self, workflow: Workflow) -> None:
         """
@@ -228,8 +304,20 @@ class ThreadedExecutor(BaseExecutor):
                     )
 
                     # Submit all tasks in the current layer to the thread pool
+                    # Skip tasks that are already completed and stored
                     futures = {}
                     for task in layer:
+                        # Check if task is already completed and can be skipped
+                        if self._restore_task_from_store(task):
+                            # Task was restored, update context and skip execution
+                            with self._context_lock:
+                                context[task.name] = task.result
+                            workflow._store_task_result(task.name, task.result)
+                            logger.debug(
+                                f"Task '{task.name}' restored from store (skipped)"
+                            )
+                            continue
+
                         # Build context for this specific task
                         task_context = {}
                         for dep_name in workflow.get_task_dependencies(task.name):
@@ -249,10 +337,13 @@ class ThreadedExecutor(BaseExecutor):
                                 for future in futures:
                                     future.cancel()
                                 raise RuntimeError(error_msg)
-                            # Store result in context for dependent tasks
-                            context[task.name] = task.result
+                            # Store result in context for dependent tasks (thread-safe)
+                            with self._context_lock:
+                                context[task.name] = task.result
                             # Also store in workflow's thread-safe result store (XCom pattern)
                             workflow._store_task_result(task.name, task.result)
+                            # Save to persistent state store for resumability
+                            self._save_task_to_store(task)
                             logger.debug(f"Task '{task.name}' completed")
                         except Exception as e:
                             logger.error(
@@ -300,15 +391,16 @@ class AsyncExecutor(BaseExecutor):
     - Fail-fast on task failure
     """
 
-    def __init__(self, use_uvloop: bool = False):
+    def __init__(self, use_uvloop: bool = False, state_store: Optional[Any] = None):
         """
         Initialize the AsyncExecutor.
 
         Args:
             use_uvloop: If True, attempt to use uvloop for faster event loop.
                        Falls back to asyncio if uvloop not available.
+            state_store: Optional StateStore for task resumability.
         """
-        super().__init__()
+        super().__init__(state_store=state_store)
         self.use_uvloop = use_uvloop
 
     def execute(self, workflow: Workflow) -> None:
@@ -370,8 +462,20 @@ class AsyncExecutor(BaseExecutor):
                 )
 
                 # Build context for each task in this layer
+                # Skip tasks that are already completed and stored
                 tasks_to_run = []
+                skipped_tasks = []
                 for task in layer:
+                    # Check if task is already completed and can be skipped
+                    if self._restore_task_from_store(task):
+                        skipped_tasks.append(task)
+                        context[task.name] = task.result
+                        workflow._store_task_result(task.name, task.result)
+                        logger.debug(
+                            f"Task '{task.name}' restored from store (skipped)"
+                        )
+                        continue
+
                     task_context = {}
                     for dep_name in workflow.get_task_dependencies(task.name):
                         if dep_name in context:
@@ -379,10 +483,13 @@ class AsyncExecutor(BaseExecutor):
                     tasks_to_run.append(task.execute_async(task_context))
 
                 # Execute all tasks in the layer concurrently
-                await asyncio.gather(*tasks_to_run, return_exceptions=False)
+                if tasks_to_run:
+                    await asyncio.gather(*tasks_to_run, return_exceptions=False)
 
                 # Verify all tasks in the layer succeeded and store results
                 for task in layer:
+                    if task in skipped_tasks:
+                        continue  # Already processed
                     if task.status == TaskStatus.FAILED:
                         logger.error(
                             f"Critical failure in layer {layer_idx} "
@@ -393,6 +500,10 @@ class AsyncExecutor(BaseExecutor):
                         )
                     # Store task result in context for dependent tasks
                     context[task.name] = task.result
+                    # Store in workflow result store
+                    workflow._store_task_result(task.name, task.result)
+                    # Save to persistent state store for resumability
+                    self._save_task_to_store(task)
 
                 logger.debug(f"Layer {layer_idx} completed successfully")
 

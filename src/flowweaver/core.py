@@ -320,22 +320,44 @@ class Workflow:
         self._result_store: dict[str, Any] = {}
         self._store_lock = threading.RLock()  # Thread-safe result storage
 
-    def add_task(self, task: Task, depends_on: Optional[list[str]] = None) -> None:
+    def add_task(
+        self, task: Union[Task, Callable], depends_on: Optional[list[str]] = None
+    ) -> None:
         """
         Register a task and its dependencies in the workflow.
 
         Args:
-            task: The Task instance to add.
+            task: Either a Task instance OR a decorated function with @task decorator.
+                 If a function is passed, it must have __flowweaver__ metadata.
             depends_on: List of task names this task depends on (default: None).
 
         Raises:
             ValueError: If task name already exists or if adding the task
                        would create a circular dependency.
+            TypeError: If task is neither a Task nor a decorated function.
 
         Rationale (SDE-2): Dependency validation occurs immediately (fail-fast).
         This prevents silent errors and makes debugging easier. Task names are
         unique to avoid ambiguity in dependency resolution.
         """
+        # Convert decorated functions to Task objects
+        if not isinstance(task, Task):
+            if callable(task) and hasattr(task, "__flowweaver__"):
+                metadata = task.__flowweaver__
+                task = Task(
+                    name=metadata["name"],
+                    fn=task,
+                    retries=metadata["retries"],
+                    timeout=metadata["timeout"],
+                    on_status_change=metadata["on_status_change"],
+                    on_retry=metadata["on_retry"],
+                )
+            else:
+                raise TypeError(
+                    f"Task must be a Task instance or a function decorated with @task. "
+                    f"Got {type(task).__name__}"
+                )
+
         if task.name in self._tasks:
             raise ValueError(f"Task '{task.name}' already exists in workflow")
 
@@ -678,13 +700,21 @@ def task(
     """
     Decorator to convert a function into a FlowWeaver Task.
 
-    Provides elegant task definition without boilerplate Task object creation.
+    Returns the original function with FlowWeaver metadata attached, allowing it to be:
+    1. Called normally for unit testing: result = my_task()
+    2. Used with workflow.add_task(my_task)
+
+    The function remains fully callable while carrying Task metadata.
 
     Usage:
         @task(retries=3)
         def clean_data(raw_input):
             return raw_input.strip()
 
+        # Can be called directly for testing
+        clean_result = clean_data(some_data)
+
+        # Or added to workflow
         workflow.add_task(clean_data, depends_on=["fetch"])
 
     Args:
@@ -695,22 +725,30 @@ def task(
         on_retry: Optional callback for retry events.
 
     Returns:
-        A Task instance with the decorated function as its fn.
+        The original function with __flowweaver__ attribute containing Task metadata.
 
-    Rationale (SDE-2): Decorator pattern reduces boilerplate and improves readability.
-    Users can focus on business logic (the function) rather than infrastructure (Task).
+    Rationale (SDE-2):
+    - Decorator pattern reduces boilerplate while preserving function testability
+    - Returning original function allows unit testing without creating Task objects
+    - Metadata is stored as attribute, not in function signature (non-invasive)
+    - Users can focus on business logic (the function) not infrastructure (Task)
     """
 
-    def decorator(fn: Callable) -> Task:
+    def decorator(fn: Callable) -> Callable:
         task_name = name or fn.__name__
-        return Task(
-            name=task_name,
-            fn=fn,
-            retries=retries,
-            timeout=timeout,
-            on_status_change=on_status_change,
-            on_retry=on_retry,
-        )
+
+        # Store task metadata on the original function
+        fn.__flowweaver__ = {
+            "name": task_name,
+            "retries": retries,
+            "timeout": timeout,
+            "on_status_change": on_status_change,
+            "on_retry": on_retry,
+        }
+
+        # Return the ORIGINAL function (not a Task object)
+        # This allows the decorated function to be called normally
+        return fn
 
     # If called without arguments: @task
     if callable(name):
