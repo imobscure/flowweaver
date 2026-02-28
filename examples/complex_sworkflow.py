@@ -1,4 +1,3 @@
-
 """
 Complex Workflow Example for FlowWeaver
 
@@ -9,7 +8,7 @@ This script demonstrates a realistic ETL (Extract, Transform, Load) pipeline:
 4. Persisting state to JSON for RESUMABILITY
 
 Usage:
-    python examples/complex_workflow.py
+    python examples/complex_sworkflow.py
 """
 
 import time
@@ -28,7 +27,7 @@ logging.basicConfig(
 )
 
 @task(retries=2)
-def fetch_users(**kwargs):
+def fetch_users():
     """Simulates fetching users from an external API."""
     logging.info("Fetching user data...")
     time.sleep(1)  # Simulate I/O latency
@@ -39,20 +38,20 @@ def fetch_users(**kwargs):
     ]
 
 @task()
-def filter_admins(fetch_users, **kwargs):
+def filter_admins(fetch_users):
     """Filters the list to only include admins. Injects 'fetch_users' result."""
     logging.info(f"Filtering admins from {len(fetch_users)} users...")
     return [u for u in fetch_users if u["role"] == "admin"]
 
 @task()
-def format_report(filter_admins, **kwargs):
+def format_report(filter_admins):
     """Formats a string report based on the filtered data."""
     logging.info("Generating report...")
     names = ", ".join([u["name"] for u in filter_admins])
     return f"Admin Report: {names}"
 
 @task()
-def save_report(format_report, **kwargs):
+def save_report(format_report):
     """Simulates saving the report to a persistent store."""
     logging.info(f"Final Step: Saving report -> {format_report}")
     return True
@@ -83,7 +82,7 @@ def run_complex_workflow():
         
         print("\n" + "="*30)
         print(f"WORKFLOW: {wf.name}")
-        print(f"RESULT: {wf.get_task_result('format_report')}")
+        print(f"RESULT: {wf.results.get('format_report')}")
         print("="*30)
         
     except Exception as e:

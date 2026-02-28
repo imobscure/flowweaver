@@ -177,6 +177,7 @@ class ThreadedExecutor(BaseExecutor):
                             with context_lock:
                                 if dep_name in context:
                                     task_context[dep_name] = context[dep_name]
+                        logger.info(f"Task '{task.name}' context: {task_context}")
                         futures[executor.submit(task.execute, task_context)] = task
 
                     # Wait for the entire layer to finish
