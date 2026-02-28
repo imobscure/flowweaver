@@ -1,10 +1,33 @@
 [project]
+
+
 name = "flowweaver"
 version = "0.1.0"
-description = "Lightweight DAG-based workflow orchestrator"
+description = "A lightweight, resilient DAG orchestrator with parallel execution and state persistence."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    { name = "Prakhar", email = "imprakhar.ps@gmail.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Application Frameworks"
+]
 dependencies = []
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flowweaver"]
 
 [tool.setuptools.package-data]
 flowweaver = ["py.typed"]
