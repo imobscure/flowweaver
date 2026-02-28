@@ -19,9 +19,12 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from .core import TaskStatus
+
+if TYPE_CHECKING:
+    from .core import Workflow
 
 
 class BaseStateStore(ABC):
@@ -102,6 +105,30 @@ class BaseStateStore(ABC):
 
         Returns:
             List of task names in storage.
+        """
+        pass
+
+    @abstractmethod
+    def load_state(self, workflow: "Workflow") -> None:
+        """
+        Load all task states from storage into the workflow.
+
+        Restores task status, results, and errors from persistent storage.
+
+        Args:
+            workflow: The Workflow instance to populate with stored task states.
+        """
+        pass
+
+    @abstractmethod
+    def save_state(self, workflow: "Workflow") -> None:
+        """
+        Save all task states from the workflow to persistent storage.
+
+        Persists current task status, results, and errors for resumability.
+
+        Args:
+            workflow: The Workflow instance to save from.
         """
         pass
 
@@ -219,6 +246,38 @@ class JSONStateStore(BaseStateStore):
         with self._lock:
             store = self._read_store()
             return list(store.keys())
+
+    def load_state(self, workflow: "Workflow") -> None:
+        """Load all task states from storage into the workflow."""
+        with self._lock:
+            store = self._read_store()
+            for task in workflow.get_all_tasks().values():
+                if task.name in store:
+                    state_data = store[task.name]
+                    task.status = TaskStatus[state_data["status"]]
+                    task.result = state_data["result"]
+                    task.error = state_data["error"]
+                    task.completed_at = datetime.fromisoformat(state_data["timestamp"])
+                    # Also update workflow result store for context passing
+                    if task.status == TaskStatus.COMPLETED:
+                        workflow._store_task_result(task.name, task.result)
+
+    def save_state(self, workflow: "Workflow") -> None:
+        """Save all task states from the workflow to storage."""
+        with self._lock:
+            store = self._read_store()
+            for task in workflow.get_all_tasks().values():
+                store[task.name] = {
+                    "status": task.status.name,
+                    "result": task.result,
+                    "error": task.error,
+                    "timestamp": (
+                        task.completed_at.isoformat()
+                        if task.completed_at
+                        else datetime.now().isoformat()
+                    ),
+                }
+            self._write_store(store)
 
 
 class SQLiteStateStore(BaseStateStore):
@@ -422,3 +481,55 @@ class SQLiteStateStore(BaseStateStore):
                 conn.close()
                 del conn
                 gc.collect()
+
+    def load_state(self, workflow: "Workflow") -> None:
+        """Load all task states from database into the workflow."""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                for task in workflow.get_all_tasks().values():
+                    row = conn.execute(
+                        "SELECT status, result, error, timestamp FROM task_states WHERE task_name = ?",
+                        (task.name,),
+                    ).fetchone()
+
+                    if row:
+                        task.status = TaskStatus[row["status"]]
+                        task.result = (
+                            json.loads(row["result"]) if row["result"] else None
+                        )
+                        task.error = row["error"]
+                        task.completed_at = datetime.fromisoformat(row["timestamp"])
+                        # Update workflow result store for context passing
+                        if task.status == TaskStatus.COMPLETED:
+                            workflow._store_task_result(task.name, task.result)
+            finally:
+                conn.close()
+
+    def save_state(self, workflow: "Workflow") -> None:
+        """Save all task states from the workflow to database."""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                for task in workflow.get_all_tasks().values():
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO task_states
+                        (task_name, status, result, error, timestamp)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            task.name,
+                            task.status.name,
+                            json.dumps(task.result) if task.result else None,
+                            task.error,
+                            (
+                                task.completed_at.isoformat()
+                                if task.completed_at
+                                else datetime.now().isoformat()
+                            ),
+                        ),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
