@@ -15,11 +15,10 @@ Usage:
 import time
 import logging
 import os
-from sys import path as _path; from pathlib import Path as _Path
-_path.insert(0, str(_Path(__file__).parent.parent / "src"))
 from flowweaver.core import Workflow, task
 from flowweaver.executors import ThreadedExecutor
 from flowweaver.storage import JSONStateStore
+from flowweaver.utils import export_mermaid, save_mermaid, view_mermaid
 
 # Configure logging
 logging.basicConfig(
@@ -86,6 +85,12 @@ def run_complex_workflow():
         print(f"RESULT: {wf.get_task_result('format_report')}")
         print("="*30)
         
+        # --- Mermaid Visualization ---
+        print("\n📊 Mermaid Diagram (post-execution):")
+        print(export_mermaid(wf, orientation="TD"))
+        save_mermaid(wf, "complex_workflow_diagram.md")
+        view_mermaid(wf, orientation="TD")
+
     except Exception as e:
         logging.error(f"Critical Workflow Failure: {e}")
 

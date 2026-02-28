@@ -33,11 +33,22 @@ htmlcov/
 output_data.json
 audit_log.txt
 ml_report.json
+*_diagram.md
+workflow_state.json
+diagnostic_state.json
+*.sqlite
+*.db
+
+# Temporary HTML diagrams
+flowweaver_*.html
 
 # Verification Scripts (development only)
 verify_phase1.py
 verify_phase2.py
 main.py
+
+# Egg-info (editable installs)
+*.egg-info/
 
 # Type Checking
 .mypy_cache/

@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from flowweaver.core import Workflow, task
 from flowweaver.executors import ThreadedExecutor
 from flowweaver.storage import JSONStateStore
+from flowweaver.utils import export_mermaid, save_mermaid, view_mermaid
 
 
 # ============================================================================
@@ -169,6 +170,12 @@ def main():
         print("   This workflow can be STOPPED and RESTARTED without re-executing")
         print("   completed tasks. Try running this script again to see resumability!")
         print()
+
+        # --- Mermaid Visualization ---
+        print("📊 Mermaid Diagram (post-execution):")
+        print(export_mermaid(workflow))
+        save_mermaid(workflow, "full_run_diagram.md")
+        view_mermaid(workflow)
 
         return True
 

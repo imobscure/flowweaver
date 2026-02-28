@@ -249,12 +249,10 @@ class Task:
 
         while attempts < max_attempts:
             try:
+                injected_args = self._build_injected_args(context)
                 if self.is_async():
-                    # Call async function with context if needed
-                    if self._accepts_context():
-                        coro = self.fn(**context)
-                    else:
-                        coro = self.fn()
+                    # Call async function with injected context
+                    coro = self.fn(**injected_args)
                     if self.timeout:
                         self.result = await asyncio.wait_for(coro, timeout=self.timeout)
                     else:
@@ -263,8 +261,8 @@ class Task:
                     # Run sync function in thread pool
                     loop = asyncio.get_event_loop()
                     fn_wrapper = (
-                        (lambda: self.fn(**context))
-                        if self._accepts_context()
+                        (lambda args=injected_args: self.fn(**args))
+                        if injected_args
                         else self.fn
                     )
                     if self.timeout:

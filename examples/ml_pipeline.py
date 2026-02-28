@@ -18,6 +18,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from flowweaver import Task, Workflow, SequentialExecutor
+from flowweaver.utils import export_mermaid, save_mermaid, view_mermaid
 
 
 # ==================== ML Pipeline Functions ====================
@@ -217,6 +218,12 @@ def run_ml_pipeline():
     print(f"  Test Accuracy: {evaluation['test_accuracy']:.2%}")
     print(f"  Test Precision: {evaluation['test_precision']:.2%}")
     print(f"  Test F1-Score: {evaluation['test_f1']:.3f}")
+
+    # --- Mermaid Visualization ---
+    print("\n📊 Mermaid Diagram (post-execution):")
+    print(export_mermaid(workflow, orientation="LR"))
+    save_mermaid(workflow, "ml_pipeline_diagram.md", orientation="LR")
+    view_mermaid(workflow, orientation="LR")
 
 
 if __name__ == "__main__":

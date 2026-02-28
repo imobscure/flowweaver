@@ -19,8 +19,13 @@ from flowweaver.storage import (
     JSONStateStore,
     SQLiteStateStore,
 )
+from flowweaver.utils import (
+    export_mermaid,
+    save_mermaid,
+    view_mermaid,
+)
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 __all__ = [
     "Task",
     "TaskStatus",
@@ -35,4 +40,7 @@ __all__ = [
     "BaseStateStore",
     "JSONStateStore",
     "SQLiteStateStore",
+    "export_mermaid",
+    "save_mermaid",
+    "view_mermaid",
 ]

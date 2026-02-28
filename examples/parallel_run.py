@@ -29,6 +29,7 @@ from pathlib import Path
 # Add src to path for local development
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from flowweaver import Task, TaskStatus, Workflow, SequentialExecutor, ThreadedExecutor
+from flowweaver.utils import export_mermaid, save_mermaid, view_mermaid
 
 # Configure logging to see execution details
 logging.basicConfig(
@@ -163,6 +164,12 @@ def main():
         speedup = seq_time / threaded_time
         print(f"Speedup:          {speedup:.2f}x faster with threading")
     print("=" * 80 + "\n")
+
+    # --- Mermaid Visualization ---
+    print("📊 Mermaid Diagram (post-execution):")
+    print(export_mermaid(workflow, orientation="LR"))
+    save_mermaid(workflow, "parallel_run_diagram.md", orientation="LR")
+    view_mermaid(workflow, orientation="LR")
 
 
 if __name__ == "__main__":

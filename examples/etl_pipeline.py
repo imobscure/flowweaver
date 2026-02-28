@@ -20,6 +20,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from flowweaver import Task, Workflow, SequentialExecutor
+from flowweaver.utils import export_mermaid, save_mermaid, view_mermaid
 
 
 # ==================== ETL Functions ====================
@@ -233,6 +234,12 @@ def run_etl_pipeline():
     # Show final result
     final_result = workflow.get_task_result("load_database")
     print(f"\n📈 Result: {final_result}")
+
+    # --- Mermaid Visualization ---
+    print("\n📊 Mermaid Diagram (post-execution):")
+    print(export_mermaid(workflow, orientation="TD"))
+    save_mermaid(workflow, "etl_pipeline_diagram.md")
+    view_mermaid(workflow, orientation="TD")
 
 
 if __name__ == "__main__":

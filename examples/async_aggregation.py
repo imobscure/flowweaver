@@ -18,6 +18,7 @@ from collections import defaultdict
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from flowweaver import Task, Workflow, AsyncExecutor, TaskStatus
+from flowweaver.utils import export_mermaid, save_mermaid, view_mermaid
 
 
 # ==================== Async Data Functions ====================
@@ -244,6 +245,12 @@ async def run_async_pipeline():
             else:
                 print(f"  {key}: {value}")
 
+    # --- Mermaid Visualization ---
+    print("\n📊 Mermaid Diagram (post-execution):")
+    print(export_mermaid(workflow, orientation="LR"))
+    save_mermaid(workflow, "async_pipeline_diagram.md", orientation="LR")
+    view_mermaid(workflow, orientation="LR")
+
 
 if __name__ == "__main__":
     # Note: We can't call asyncio.run() here because AsyncExecutor creates its own event loop
@@ -381,5 +388,11 @@ if __name__ == "__main__":
                 print(f"  {key}: {value:.2f}")
             else:
                 print(f"  {key}: {value}")
+
+    # --- Mermaid Visualization ---
+    print("\n📊 Mermaid Diagram (post-execution):")
+    print(export_mermaid(workflow, orientation="LR"))
+    save_mermaid(workflow, "async_aggregation_diagram.md", orientation="LR")
+    view_mermaid(workflow, orientation="LR")
 
     print("\n" + "=" * 70 + "\n")

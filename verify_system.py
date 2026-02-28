@@ -97,8 +97,8 @@ def run_diagnostic():
     if os.path.exists(state_file):
         with open(state_file, 'r') as f:
             saved_state = json.load(f)
-            status = saved_state.get("tasks", {}).get("transform_data", {}).get("status")
-            if status == "completed":
+            status = saved_state.get("transform_data", {}).get("status")
+            if status and status.upper() == "COMPLETED":
                 print("[PASS] JSON Persistence")
             else:
                 print(f"[FAIL] JSON Persistence (Status is {status})")
