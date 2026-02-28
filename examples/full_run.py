@@ -29,7 +29,7 @@ from flowweaver.storage import JSONStateStore
 
 
 @task()
-def fetch_data():
+def fetch_data(**kwargs):
     """Simulate fetching data from an API."""
     print("  📥 Fetching data from source...")
     return {
@@ -44,8 +44,9 @@ def fetch_data():
 
 
 @task()
-def validate_data(fetch_data):
+def validate_data(**kwargs):
     """Validate and enrich data."""
+    fetch_data = kwargs.get("fetch_data")
     print(f"  ✓ Validating {len(fetch_data['records'])} records...")
     for record in fetch_data["records"]:
         record["valid"] = record["value"] > 0
@@ -57,8 +58,9 @@ def validate_data(fetch_data):
 
 
 @task()
-def transform_data(validate_data):
+def transform_data(**kwargs):
     """Transform validated data."""
+    validate_data = kwargs.get("validate_data")
     print(f"  🔄 Transforming {validate_data['record_count']} records...")
     transformed = [
         {
@@ -77,8 +79,9 @@ def transform_data(validate_data):
 
 
 @task()
-def aggregate_results(transform_data):
+def aggregate_results(**kwargs):
     """Aggregate and summarize results."""
+    transform_data = kwargs.get("transform_data")
     print(f"  📊 Aggregating results...")
     total = sum(r["value_doubled"] for r in transform_data["records"])
     return {
@@ -115,6 +118,10 @@ def main():
 
     # Step 2: Setup Persistence (JSONStateStore)
     print("\n[2/4] Setting up persistence...")
+    state_path = Path("workflow_state.json")
+    if state_path.exists():
+        print("  ⚠️ Removing old workflow_state.json for clean run...")
+        state_path.unlink()
     store = JSONStateStore("workflow_state.json")
     print(f"  ✓ JSONStateStore initialized (workflow_state.json)")
 

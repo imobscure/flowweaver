@@ -1,20 +1,8 @@
-"""
-FlowWeaver Storage Module
 
-Provides abstract and concrete persistence layers for task state management.
-Enables workflow resumption, disaster recovery, and state audit trails.
-
-Key Features:
-- Abstract BaseStateStore for pluggable backends
-- JSONStateStore for lightweight file-based persistence
-- SQLiteStateStore for scalable relational storage
-- Thread-safe state operations with atomic writes
-"""
-
-import gc
 import json
 import sqlite3
 import threading
+from threading import RLock
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -138,9 +126,9 @@ class JSONStateStore(BaseStateStore):
     Lightweight JSON-based state persistence.
 
     Ideal for:
-    - Development and testing
-    - Single-machine workflows
-    - Small-to-medium task counts (<10k)
+        - Development and testing
+        - Single-machine workflows
+        - Small-to-medium task counts (less than 10,000)
 
     Storage Format:
         {
@@ -181,7 +169,11 @@ class JSONStateStore(BaseStateStore):
         try:
             with open(self.file_path, "r") as f:
                 return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
+        except FileNotFoundError:
+            logger.warning(f"State file not found: {self.file_path}", extra={"file_path": str(self.file_path)})
+            return {}
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error in state file: {self.file_path}", extra={"file_path": str(self.file_path), "error": str(e)})
             return {}
 
     def _write_store(self, store: Dict[str, Any]) -> None:

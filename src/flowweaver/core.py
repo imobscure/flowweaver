@@ -15,9 +15,10 @@ Key Features:
 
 import asyncio
 import functools
+import threading
 import inspect
 import logging
-import threading
+from threading import RLock
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Optional, Coroutine, Union, Dict
@@ -32,8 +33,7 @@ class TaskStatus(Enum):
     """
     Enumeration of task execution states.
 
-    Rationale (SDE-2): Using Enum ensures type-safe state management and prevents
-    invalid state assignments. Each state is immutable and self-documenting.
+    Using Enum ensures type-safe state management and prevents invalid state assignments. Each state is immutable and self-documenting.
     """
 
     PENDING = "pending"
@@ -49,8 +49,7 @@ class StateBackend(ABC):
     Enables workflow resumption after failures by storing task state externally.
     This design allows users to implement SQLite, Redis, or cloud backends.
 
-    Rationale (SDE-2): Decoupling state from Task objects enables distributed
-    systems where tasks run on different machines. Follows Dependency Inversion.
+    Decoupling state from Task objects enables distributed systems where tasks run on different machines. Follows Dependency Inversion.
     """
 
     @abstractmethod
@@ -58,11 +57,20 @@ class StateBackend(ABC):
         self,
         task_name: str,
         status: TaskStatus,
-        result: Any,
-        error: Optional[str],
-        timestamp: datetime,
+        result: Any = None,
+        error: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> None:
-        """Save task execution state."""
+        """
+        Save task execution state to persistent storage.
+
+        Args:
+            task_name: Unique identifier for the task.
+            status: Current TaskStatus (RUNNING, COMPLETED, FAILED, etc).
+            result: Task execution result (if any).
+            error: Error message if the task failed.
+            timestamp: Time of state update.
+        """
         pass
 
     @abstractmethod
@@ -126,7 +134,7 @@ class Task:
         started_at: Timestamp when task execution began.
         completed_at: Timestamp when task execution ended.
 
-    Rationale (SDE-2):
+    This dataclass provides automated __init__, __repr__ with strict typing. Context pattern enables data sharing between dependent tasks. Callbacks enable real-time monitoring without coupling.
     - Dataclass provides automated __init__, __repr__ with strict typing
     - Context (XCom) pattern enables data sharing between dependent tasks
     - Inspect module detects function signature to pass context intelligently
@@ -159,11 +167,15 @@ class Task:
         """Check if task function accepts context params via **kwargs."""
         sig = inspect.signature(self.fn)
         # Only accept context if function explicitly has **kwargs parameter
+        if self._context_accept_cache is not None:
+            return self._context_accept_cache
         has_var_keyword = any(
             param.kind == inspect.Parameter.VAR_KEYWORD
             for param in sig.parameters.values()
         )
+        self._context_accept_cache = has_var_keyword
         return has_var_keyword
+    _context_accept_cache: Optional[bool] = None
 
     def execute(self, context: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -302,7 +314,7 @@ class Workflow:
     Manages task registration, dependency tracking, and DAG validation.
     Critical invariant: The workflow must remain acyclic at all times.
 
-    Rationale (SDE-2): Graph-based approach supports complex dependencies.
+    Graph-based approach supports complex dependencies.
     DFS-based cycle detection ensures O(V+E) complexity with immediate feedback.
     Strategy pattern (via __validate_dag) enables future extensibility for
     topological sorting, parallel execution planning, etc.
@@ -337,7 +349,7 @@ class Workflow:
                        would create a circular dependency.
             TypeError: If task is neither a Task nor a decorated function.
 
-        Rationale (SDE-2): Dependency validation occurs immediately (fail-fast).
+        Dependency validation occurs immediately (fail-fast).
         This prevents silent errors and makes debugging easier. Task names are
         unique to avoid ambiguity in dependency resolution.
         """
@@ -391,7 +403,7 @@ class Workflow:
         Returns:
             True if a cycle exists, False otherwise.
 
-        Rationale (SDE-2): DFS is the standard algorithm for cycle detection in graphs.
+        DFS is the standard algorithm for cycle detection in graphs.
         Time complexity: O(V+E) where V=number of tasks, E=number of dependencies.
         Space complexity: O(V) for recursion stack and color tracking.
 
@@ -478,7 +490,7 @@ class Workflow:
 
         Algorithm: Kahn's Algorithm (Topological Sort with Level Assignment)
 
-        Rationale (SDE-2): Kahn's Algorithm provides O(V+E) topological sorting with
+        Kahn's Algorithm provides O(V+E) topological sorting with
         explicit layer recognition. Unlike DFS-based approaches, it naturally groups
         independent tasks at the same dependency depth, enabling parallelization.
 
@@ -708,7 +720,7 @@ def task(
 
     The function remains fully callable with preserved signature while carrying Task metadata.
 
-    **Signature Preservation (SDE-2 Feature)**:
+    **Signature Preservation Feature**:
     - Uses functools.wraps to preserve original function's __name__, __doc__, and __signature__
     - Default arguments are fully supported and preserved
     - Type hints are maintained for IDE autocomplete and type checking
@@ -729,7 +741,7 @@ def task(
         # Or added to workflow (defaults apply at execution time)
         workflow.add_task(fetch_data, depends_on=["setup"])
 
-    **Type Validation (SDE-2 Feature)**:
+    **Type Validation Feature**:
     - Function signature is inspected and preserved via inspect.signature()
     - When task executes in workflow, context keys are matched against signature parameters
     - Default parameters are honored - context only provides values for required params
@@ -762,7 +774,7 @@ def task(
         The original function (fully preserved with all metadata) with __flowweaver__
         attribute containing Task configuration. Function is 100% callable as before.
 
-    Rationale (SDE-2 Architecture):
+    Architectural rationale:
     - Decorator pattern reduces boilerplate while preserving function testability
     - Returning original function allows unit testing without creating Task objects
     - functools.wraps preserves signature for IDE support and introspection

@@ -24,6 +24,10 @@ Layer 3: [task_e]
 
 import logging
 import time
+import sys
+from pathlib import Path
+# Add src to path for local development
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from flowweaver import Task, TaskStatus, Workflow, SequentialExecutor, ThreadedExecutor
 
 # Configure logging to see execution details

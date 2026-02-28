@@ -3,7 +3,7 @@ FlowWeaver Executors Module
 
 Implements different execution strategies using the Strategy Pattern.
 Supports sequential, multi-threaded, and asynchronous execution.
-Includes SDE-2 level state-awareness for workflow resumption.
+Includes state-awareness for workflow resumption.
 
 Key Features:
 - Strategy Pattern: Multiple execution approaches (Sequential, Threaded, Async)
@@ -17,6 +17,7 @@ import asyncio
 import concurrent.futures
 import logging
 import threading
+from threading import RLock
 from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict
 
@@ -29,12 +30,17 @@ class BaseExecutor(ABC):
     """
     Abstract Base Class for all Executors.
 
-    Rationale (SDE-2): Using the Strategy Pattern allows the Workflow to remain
-    agnostic of the execution environment (local threads vs. distributed nodes).
-    State store integration enables resumability - skipping already-completed tasks.
+    Using the Strategy Pattern allows the Workflow to remain agnostic of the execution environment (local threads vs. distributed nodes). State store integration enables resumability - skipping already-completed tasks.
     """
 
     def __init__(self, storage: Optional[Any] = None):
+        """
+        Initialize the BaseExecutor.
+
+        Args:
+            storage: Optional StateStore backend for task resumability.
+        """
+        self.storage = storage
         """
         Initialize the BaseExecutor.
 
@@ -81,7 +87,7 @@ class SequentialExecutor(BaseExecutor):
             for layer in plan:
                 for task in layer:
                     if self._should_skip(task):
-                        logger.info(f"Skipping completed task: {task.name}")
+                        logger.info(f"Skipping completed task: {task.name}", extra={"workflow": workflow.name, "task": task.name})
                         context[task.name] = task.result
                         continue
 
@@ -91,7 +97,7 @@ class SequentialExecutor(BaseExecutor):
                         if dep_name in context:
                             task_context[dep_name] = context[dep_name]
 
-                    logger.debug(f"Executing task: {task.name}")
+                    logger.debug(f"Executing task: {task.name}", extra={"workflow": workflow.name, "task": task.name})
 
                     try:
                         task.execute(task_context)
@@ -99,22 +105,18 @@ class SequentialExecutor(BaseExecutor):
                             context[task.name] = task.result
                             workflow._store_task_result(task.name, task.result)
                         else:
-                            raise RuntimeError(
-                                f"Task '{task.name}' failed: {task.error}"
-                            )
+                            raise RuntimeError(f"Task '{task.name}' failed: {task.error}")
                     except Exception as e:
-                        logger.error(f"Task '{task.name}' failed: {e}")
-                        raise RuntimeError(
-                            f"Workflow failed at task: {task.name}"
-                        ) from e
+                        logger.exception(f"Task '{task.name}' failed", extra={"workflow": workflow.name, "task": task.name})
+                        raise RuntimeError(f"Workflow failed at task: {task.name}") from e
 
                 if self.storage:
                     self.storage.save_state(workflow)
 
-            logger.info(f"Successfully completed workflow: {workflow.name}")
+            logger.info(f"Successfully completed workflow: {workflow.name}", extra={"workflow": workflow.name})
 
         except Exception as e:
-            logger.error(f"Workflow execution failed: {str(e)}")
+            logger.exception(f"Workflow execution failed", extra={"workflow": workflow.name})
             raise
 
 
@@ -304,13 +306,13 @@ class AsyncExecutor(BaseExecutor):
     async def _run_task_async(
         self, workflow: Workflow, task: Task, context: Dict[str, Any]
     ) -> None:
-        """Helper to run a single task and handle exceptions."""
+        """Helper to run a single task and handle exceptions. Uses thread pool for sync tasks."""
         try:
-            # Check if task has async execute method
             if hasattr(task, "execute_async") and callable(task.execute_async):
                 await task.execute_async(context)
+            elif task.is_async():
+                await task.fn(**(context or {}))
             else:
-                # Fall back to sync execute in thread pool
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, task.execute, context)
 
@@ -319,7 +321,7 @@ class AsyncExecutor(BaseExecutor):
             else:
                 raise RuntimeError(f"Task '{task.name}' ended in status {task.status}")
         except Exception as e:
-            logger.error(f"Critical failure in task '{task.name}': {e}")
+            logger.exception(f"Critical failure in task '{task.name}'", extra={"workflow": workflow.name, "task": task.name})
             raise RuntimeError(
                 f"Workflow execution halted due to failure in task: {task.name}"
             ) from e
