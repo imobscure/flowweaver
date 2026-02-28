@@ -163,19 +163,21 @@ class Task:
         """Check if the task function is async."""
         return inspect.iscoroutinefunction(self.fn)
 
-    def _accepts_context(self) -> bool:
-        """Check if task function accepts context params via **kwargs."""
+
+    def _build_injected_args(self, context: dict) -> dict:
+        """
+        Build a dict of arguments to inject into the task function.
+        Matches context keys to function's named parameters.
+        If **kwargs is present, all context is passed.
+        """
         sig = inspect.signature(self.fn)
-        # Only accept context if function explicitly has **kwargs parameter
-        if self._context_accept_cache is not None:
-            return self._context_accept_cache
-        has_var_keyword = any(
-            param.kind == inspect.Parameter.VAR_KEYWORD
-            for param in sig.parameters.values()
-        )
-        self._context_accept_cache = has_var_keyword
-        return has_var_keyword
-    _context_accept_cache: Optional[bool] = None
+        params = sig.parameters
+        has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+        if has_var_keyword:
+            return context.copy()
+        # Only inject context keys that match named parameters
+        return {k: v for k, v in context.items() if k in params}
+
 
     def execute(self, context: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -203,11 +205,8 @@ class Task:
 
         while attempts < max_attempts:
             try:
-                # Call function with context if it accepts **kwargs
-                if self._accepts_context():
-                    self.result = self.fn(**context)
-                else:
-                    self.result = self.fn()
+                injected_args = self._build_injected_args(context)
+                self.result = self.fn(**injected_args)
                 self._set_status(TaskStatus.COMPLETED)
                 self.completed_at = datetime.now()
                 self.error = None

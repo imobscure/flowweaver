@@ -156,7 +156,15 @@ class ThreadedExecutor(BaseExecutor):
             ) as executor:
                 for i, layer in enumerate(plan):
                     # Filter out tasks that were already completed (Resumability)
-                    tasks_to_run = [t for t in layer if not self._should_skip(t)]
+                    tasks_to_run = []
+                    for t in layer:
+                        if self._should_skip(t):
+                            # Add completed task result to context for DI
+                            with context_lock:
+                                context[t.name] = t.result
+                            logger.info(f"Skipping completed task: {t.name}")
+                        else:
+                            tasks_to_run.append(t)
 
                     if not tasks_to_run:
                         logger.info(
@@ -177,6 +185,7 @@ class ThreadedExecutor(BaseExecutor):
                             with context_lock:
                                 if dep_name in context:
                                     task_context[dep_name] = context[dep_name]
+                        # Always pass context for DI, even if empty
                         logger.info(f"Task '{task.name}' context: {task_context}")
                         futures[executor.submit(task.execute, task_context)] = task
 
