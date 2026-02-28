@@ -538,6 +538,127 @@ def test_exception_propagation():
     print("✓ Exception propagation works correctly")
 
 
+# ==================== Concurrency Verification ====================
+
+
+def test_threaded_executor_parallelism():
+    """Verify ThreadedExecutor actually runs tasks in parallel.
+
+    This is a critical test for portfolio - proves concurrent execution.
+    If tasks ran sequentially, total time would be ~6 seconds.
+    If tasks run in parallel (max_workers=3), total time should be ~2 seconds.
+    """
+    print("Testing ThreadedExecutor parallelism (timing-based proof)...")
+
+    workflow = Workflow(name="parallelism_test")
+
+    # Create 3 independent tasks, each taking 2 seconds
+    for i in range(3):
+        task = Task(
+            name=f"parallel_task_{i}",
+            fn=lambda x=i: (time.sleep(2.0), x)[1],  # Sleep 2 seconds, return index
+        )
+        workflow.add_task(task)
+
+    executor = ThreadedExecutor(max_workers=3)
+
+    start = time.time()
+    executor.execute(workflow)
+    elapsed = time.time() - start
+
+    # If parallel: ~2 seconds (3 tasks × 2s, running concurrently)
+    # If sequential: ~6 seconds (3 tasks × 2s, running one-by-one)
+    # We use 3.0 as threshold to account for overhead
+
+    assert elapsed < 3.5, (
+        f"Tasks did not run in parallel! Took {elapsed:.2f}s (expected <3.5s for parallel)"
+    )
+
+    for i in range(3):
+        assert workflow.get_task_status(f"parallel_task_{i}") == TaskStatus.COMPLETED
+
+    print(
+        f"✓ ThreadedExecutor parallelism VERIFIED: 3 × 2s tasks completed in {elapsed:.2f}s (parallel, not {3 * 2}s sequential)"
+    )
+
+
+# ==================== Data Flow (XCom) Verification ====================
+
+
+def test_xcom_data_flow_between_tasks():
+    """Verify XCom pattern: Task B receives Task A's return value via dependency injection.
+
+    This is critical for portfolio - proves data flows correctly through the DAG.
+    Task A returns a dict, Task B receives and transforms it.
+    """
+    print("Testing XCom data flow (dependency injection)...")
+
+    workflow = Workflow(name="xcom_test")
+
+    # Task A: produces data
+    def task_a_fn() -> dict:
+        return {"name": "Alice", "age": 30, "score": 95}
+
+    # Task B: receives Task A's result, transforms it
+    def task_b_fn() -> dict:
+        # Get the result from Task A (dependency injection via workflow context)
+        task_a_result = workflow.get_task_result("task_a")
+
+        # Verify we got Task A's data
+        assert task_a_result is not None, "Task A result should not be None"
+        assert task_a_result["name"] == "Alice", "Should receive Task A's data"
+
+        # Transform the data
+        return {
+            "name": task_a_result["name"].upper(),
+            "age": task_a_result["age"],
+            "score": task_a_result["score"] + 5,  # Bonus points
+            "transformed_by": "task_b",
+        }
+
+    # Task C: receives Task B's result
+    def task_c_fn() -> dict:
+        task_b_result = workflow.get_task_result("task_b")
+
+        assert task_b_result is not None, "Task B result should not be None"
+        assert task_b_result["name"] == "ALICE", (
+            "Should receive Task B's transformed name"
+        )
+        assert task_b_result["score"] == 100, "Should receive Task B's bonus score"
+
+        return {
+            "final_name": task_b_result["name"],
+            "final_score": task_b_result["score"],
+            "pipeline_stages": 3,
+        }
+
+    task_a = Task(name="task_a", fn=task_a_fn)
+    task_b = Task(name="task_b", fn=task_b_fn)
+    task_c = Task(name="task_c", fn=task_c_fn)
+
+    workflow.add_task(task_a)
+    workflow.add_task(task_b, depends_on=["task_a"])
+    workflow.add_task(task_c, depends_on=["task_b"])
+
+    executor = SequentialExecutor()
+    executor.execute(workflow)
+
+    # Verify all tasks completed
+    assert workflow.get_task_status("task_a") == TaskStatus.COMPLETED
+    assert workflow.get_task_status("task_b") == TaskStatus.COMPLETED
+    assert workflow.get_task_status("task_c") == TaskStatus.COMPLETED
+
+    # Verify final result
+    final_result = workflow.get_task_result("task_c")
+    assert final_result["final_name"] == "ALICE"
+    assert final_result["final_score"] == 100
+    assert final_result["pipeline_stages"] == 3
+
+    print(
+        "✓ XCom data flow VERIFIED: Task A → Task B → Task C data pipeline works correctly"
+    )
+
+
 if __name__ == "__main__":
     try:
         # Async task tests
@@ -569,6 +690,10 @@ if __name__ == "__main__":
         # Integration tests
         test_complex_dag()
         test_exception_propagation()
+
+        # Portfolio-critical tests
+        test_threaded_executor_parallelism()
+        test_xcom_data_flow_between_tasks()
 
         print("\n" + "=" * 70)
         print("✅ All comprehensive tests passed!")
