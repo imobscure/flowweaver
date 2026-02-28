@@ -1,13 +1,13 @@
-# FlowWeaver v0.3.2 - Production Documentation Index
+# FlowWeaver v0.1.2 - Production Documentation Index
 
 ## Overview
 
-Complete production documentation for FlowWeaver v0.3.2, the thread-safe, resumable workflow orchestration framework.
+Complete production documentation for FlowWeaver v0.1.2, the thread-safe, resumable workflow orchestration framework.
 
 **Status**: ✅ Production Ready  
-**Version**: 0.3.2  
+**Version**: 0.1.2  
 **Release Date**: February 2026  
-**Python**: 3.10+
+**Python**: 3.9+
 
 ---
 

@@ -17,11 +17,11 @@ FlowWeaver is a lightweight, production-ready library for building and executing
 ## 📦 Installation
 
 ```bash
-# Using pip
-pip install flowweaver
+# Using pip (always use >=0.1.2 for robust DI)
+pip install 'flowweaver>=0.1.2'
 
 # Using uv (recommended)
-uv add flowweaver
+uv add 'flowweaver>=0.1.2'
 ```
 
 ## 🚀 Quick Start

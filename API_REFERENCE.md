@@ -1,4 +1,4 @@
-# FlowWeaver v0.3.2 - Complete API Reference
+# FlowWeaver v0.1.2 - Complete API Reference
 
 ## Table of Contents
 
@@ -756,5 +756,5 @@ except Exception as e:
 
 ---
 
-**Version**: 0.3.2 - Production Ready
+**Version**: 0.1.2 - Production Ready
 **Last Updated**: February 2026

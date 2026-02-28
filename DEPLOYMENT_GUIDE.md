@@ -15,8 +15,9 @@
 
 ### 1. Install FlowWeaver
 ```bash
-# From PyPI (when published)
-pip install flowweaver
+
+# From PyPI (always use >=0.1.2 for robust DI)
+pip install 'flowweaver>=0.1.2'
 
 # Or from source
 git clone https://github.com/your-org/flowweaver.git
@@ -35,7 +36,7 @@ print("✓ FlowWeaver installed successfully")
 ## Environment Setup
 
 ### Python Version
-- **Minimum**: Python 3.10
+- **Minimum**: Python 3.9
 - **Recommended**: Python 3.11 or 3.12
 
 ### Virtual Environment (Strongly Recommended)
@@ -49,14 +50,14 @@ source flowweaver-env/bin/activate
 # On Windows:
 flowweaver-env\Scripts\activate
 
-# Install FlowWeaver
-pip install flowweaver
+# Install FlowWeaver (always use >=0.1.2)
+pip install 'flowweaver>=0.1.2'
 ```
 
 ### Production Dependencies
 ```bash
 # Core requirements (installed automatically)
-# flowweaver requires: Python 3.10+
+# flowweaver requires: Python 3.9+
 # No external dependencies for core library
 
 # Optional: State persistence backends
@@ -257,7 +258,7 @@ def health_check():
         return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "version": "0.3.2",
+            "version": "0.1.2",
             "checks": {
                 "imports": "ok",
                 "state_store": "ok",
@@ -546,4 +547,4 @@ from flowweaver import SQLiteStateStore
 - **Examples**: See [examples/](examples/) directory
 - **Best Practices**: See [BEST_PRACTICES.md](BEST_PRACTICES.md)
 - **Issues**: https://github.com/your-org/flowweaver/issues
-- **Version**: 0.3.2 - Production Ready
+- **Version**: 0.1.2 - Production Ready

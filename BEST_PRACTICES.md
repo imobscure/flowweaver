@@ -1,4 +1,4 @@
-# FlowWeaver v0.3.2 - Production Best Practices
+# FlowWeaver v0.1.2 - Production Best Practices
 
 ## Table of Contents
 
@@ -970,5 +970,5 @@ def unreliable_api_call():
 
 ---
 
-**Version**: 0.3.2 - Production Ready
+**Version**: 0.1.2 - Production Ready
 **Last Updated**: February 2026
