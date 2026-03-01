@@ -25,7 +25,7 @@ from flowweaver.utils import (
     view_mermaid,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.2.2"
 __all__ = [
     "Task",
     "TaskStatus",

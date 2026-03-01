@@ -189,6 +189,9 @@ _HTML_TEMPLATE = """\
       border-radius: 12px;
       padding: 2rem 3rem;
       box-shadow: 0 8px 30px rgba(0,0,0,.3);
+      max-width: 1600px;
+      width: 95vw;
+      overflow-x: auto;
     }}
     h3 {{
       text-align: center;
@@ -205,7 +208,13 @@ _HTML_TEMPLATE = """\
     </pre>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-  <script>mermaid.initialize({{ startOnLoad: true, theme: "default" }});</script>
+  <script>mermaid.initialize({{
+    startOnLoad: true,
+    theme: "default",
+    maxTextSize: 1000000,
+    maxNodes: 20000,
+    securityLevel: "loose"
+  }});</script>
 </body>
 </html>
 """
@@ -220,6 +229,10 @@ def view_mermaid(
     Creates a self-contained temporary HTML file that loads *mermaid.js*
     from the jsDelivr CDN and renders the graph client-side.  The file is
     opened automatically via :func:`webbrowser.open`.
+
+    The Mermaid configuration uses ``maxTextSize: 1_000_000`` and
+    ``maxNodes: 20_000`` so DAGs with 5 000+ tasks render without
+    hitting the default text-size limit.
 
     Args:
         workflow: The :class:`~flowweaver.core.Workflow` instance to visualise.

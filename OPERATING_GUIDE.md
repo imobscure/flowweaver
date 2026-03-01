@@ -1,4 +1,4 @@
-# FlowWeaver v0.3.2 - Operating Guide
+# FlowWeaver v0.2.2 - Operating Guide
 
 ## Table of Contents
 
@@ -254,7 +254,7 @@ def health():
             "checks": {
                 "state_store": "ok",
                 "saved_tasks": task_count,
-                "version": "0.3.2"
+                "version": "0.2.2"
             }
         }), 200
     
@@ -640,7 +640,7 @@ tail -f /var/log/flowweaver/production.log
 
 ### Backward Compatibility
 
-- v0.3.x is fully backward compatible
+- v0.2.x is fully backward compatible
 - Existing state stores work without migration
 - No breaking changes to API
 
@@ -721,5 +721,5 @@ if __name__ == "__main__":
 
 ---
 
-**Version**: 0.3.2 - Production Ready
-**Last Updated**: February 2026
+**Version**: 0.2.2 - Production Ready
+**Last Updated**: March 2026

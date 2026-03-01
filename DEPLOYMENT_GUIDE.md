@@ -1,4 +1,4 @@
-# FlowWeaver v0.3.2 - Production Deployment Guide
+# FlowWeaver v0.2.2 - Production Deployment Guide
 
 ## Table of Contents
 1. [Installation](#installation)
@@ -16,11 +16,11 @@
 ### 1. Install FlowWeaver
 ```bash
 
-# From PyPI (always use >=0.1.2 for robust DI)
-pip install 'flowweaver>=0.1.2'
+# From PyPI
+pip install 'flowweaver>=0.2.2'
 
 # Or from source
-git clone https://github.com/your-org/flowweaver.git
+git clone https://github.com/imobscure/flowweaver.git
 cd flowweaver
 pip install -e .
 ```
@@ -50,8 +50,8 @@ source flowweaver-env/bin/activate
 # On Windows:
 flowweaver-env\Scripts\activate
 
-# Install FlowWeaver (always use >=0.1.2)
-pip install 'flowweaver>=0.1.2'
+# Install FlowWeaver
+pip install 'flowweaver>=0.2.2'
 ```
 
 ### Production Dependencies
@@ -258,7 +258,7 @@ def health_check():
         return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "version": "0.1.2",
+            "version": "0.2.2",
             "checks": {
                 "imports": "ok",
                 "state_store": "ok",
@@ -455,13 +455,13 @@ sqlite3 /var/lib/flowweaver/state.db "SELECT * FROM tasks LIMIT 10;"
 
 **Symptom**: Inconsistent results when using ThreadedExecutor
 
-**Cause**: Not using explicit RLock (v0.3.2 includes RLock protection)
+**Cause**: Not using explicit RLock (FlowWeaver includes RLock protection)
 
 **Solution**:
 ```python
 from flowweaver import ThreadedExecutor
 
-# v0.3.2+ automatically uses RLock for thread safety
+# Automatically uses RLock for thread safety
 executor = ThreadedExecutor(max_workers=4)
 # RLock is automatically configured
 ```
@@ -546,5 +546,5 @@ from flowweaver import SQLiteStateStore
 - **Documentation**: See [API_REFERENCE.md](API_REFERENCE.md)
 - **Examples**: See [examples/](examples/) directory
 - **Best Practices**: See [BEST_PRACTICES.md](BEST_PRACTICES.md)
-- **Issues**: https://github.com/your-org/flowweaver/issues
-- **Version**: 0.1.2 - Production Ready
+- **Issues**: https://github.com/imobscure/flowweaver/issues
+- **Version**: 0.2.2 - Production Ready

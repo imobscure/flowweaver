@@ -1,5 +1,7 @@
 
+import gc
 import json
+import logging
 import sqlite3
 import threading
 from threading import RLock
@@ -10,6 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from .core import TaskStatus
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .core import Workflow
@@ -165,15 +169,31 @@ class JSONStateStore(BaseStateStore):
                 self._write_store({})
 
     def _read_store(self) -> Dict[str, Any]:
-        """Safely read store from disk."""
+        """Safely read store from disk.
+
+        Returns an empty dict when the file is missing, empty, or contains
+        corrupted / non-JSON data so that callers never need to handle
+        read-side errors.
+        """
         try:
             with open(self.file_path, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+            if not isinstance(data, dict):
+                logger.warning(
+                    "State file '%s' contains non-dict root; resetting.",
+                    self.file_path,
+                )
+                return {}
+            return data
         except FileNotFoundError:
-            logger.warning(f"State file not found: {self.file_path}", extra={"file_path": str(self.file_path)})
+            logger.warning("State file not found: %s", self.file_path)
             return {}
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error in state file: {self.file_path}", extra={"file_path": str(self.file_path), "error": str(e)})
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError) as exc:
+            logger.error(
+                "Corrupted state file '%s' — ignoring contents: %s",
+                self.file_path,
+                exc,
+            )
             return {}
 
     def _write_store(self, store: Dict[str, Any]) -> None:

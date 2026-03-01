@@ -17,11 +17,11 @@ FlowWeaver is a lightweight, production-ready library for building and executing
 ## 📦 Installation
 
 ```bash
-# Using pip (always use >=0.1.2 for robust DI)
-pip install 'flowweaver>=0.1.2'
+# Using pip
+pip install 'flowweaver>=0.2.2'
 
 # Using uv (recommended)
-uv add 'flowweaver>=0.1.2'
+uv add 'flowweaver>=0.2.2'
 ```
 
 ## 🚀 Quick Start
@@ -462,12 +462,30 @@ stats = workflow.get_workflow_stats()
 # }
 ```
 
+## 📊 DAG Visualization
+
+FlowWeaver includes built-in **Mermaid.js** visualization with colour-coded task statuses (green = completed, red = failed, orange = running, grey = pending).
+
+```python
+from flowweaver.utils import export_mermaid, save_mermaid, view_mermaid
+
+# Get Mermaid markup as a string
+print(export_mermaid(workflow, orientation="LR"))
+
+# Save to a markdown file
+save_mermaid(workflow, "my_pipeline.md")
+
+# Open interactive diagram in the browser
+view_mermaid(workflow, orientation="LR")
+```
+
+See [examples/visualize_dag.py](examples/visualize_dag.py) for a full working demo.
+
 ## 🤝 Contributing
 
 Contributions welcome! Areas for enhancement:
 - Integration with external monitoring tools (Datadog, New Relic)
 - Distributed execution backend (Celery, Ray)
-- Web dashboard for workflow visualization
 - Caching and memoization support
 - Dynamic task generation
 
@@ -477,8 +495,17 @@ MIT License - See LICENSE file for details
 
 ## 🎉 Changelog
 
-### v0.2.0 (Current)
-- ✨ Added async/await support with AsyncExecutor
+### v0.2.2 (Current)
+- **Resiliency at scale** — corrupted JSON state files handled gracefully
+- **Chain-based visualization** — Mermaid.js viewer supports 5,000+ task DAGs
+- CI test matrix across Python 3.9–3.12
+- Hardened `JSONStateStore._read_store` with broader exception handling
+- All documentation aligned to v0.2.2
+
+### v0.2.0
+- ✨ **Mermaid.js DAG visualization** — `export_mermaid`, `save_mermaid`, `view_mermaid`
+- ✨ Interactive browser-based workflow diagrams with colour-coded task statuses
+- ✨ Async/await support with AsyncExecutor
 - ✨ Real-time status callbacks and monitoring
 - ✨ Task timeouts with configurable retry logic
 - ✨ Comprehensive error handling and validation

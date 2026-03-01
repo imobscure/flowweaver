@@ -1,12 +1,12 @@
-# FlowWeaver v0.1.2 - Production Documentation Index
+# FlowWeaver v0.2.2 - Production Documentation Index
 
 ## Overview
 
-Complete production documentation for FlowWeaver v0.1.2, the thread-safe, resumable workflow orchestration framework.
+Complete production documentation for FlowWeaver v0.2.2, the DAG-based workflow orchestration framework with built-in visualization.
 
 **Status**: ✅ Production Ready  
-**Version**: 0.1.2  
-**Release Date**: February 2026  
+**Version**: 0.2.2  
+**Release Date**: March 2026  
 **Python**: 3.9+
 
 ---
@@ -80,6 +80,7 @@ If you're new to FlowWeaver, start here:
 
 - **Enums** - TaskStatus, WorkflowStatus
 - **Exceptions** - WorkflowExecutionError, TaskExecutionError
+- **Visualization Utilities** - Mermaid.js DAG export, save, and browser preview
 
 **When to use**: Building workflows, understanding API
 
@@ -225,9 +226,32 @@ If you're new to FlowWeaver, start here:
 
 ## Feature Documentation
 
-### Thread Safety (v0.3.2)
+### Mermaid.js Visualization (v0.2.0)
 
-FlowWeaver v0.3.2 includes explicit thread-safe locking:
+FlowWeaver v0.2.0 includes built-in DAG visualization:
+
+**Functions:**
+- `export_mermaid(workflow, orientation)` — Returns Mermaid graph string
+- `save_mermaid(workflow, filepath, orientation)` — Writes Mermaid to a file
+- `view_mermaid(workflow, orientation)` — Opens interactive HTML diagram in browser
+
+**Status colours:**
+- COMPLETED = green (`#28a745`)
+- FAILED = red (`#dc3545`)
+- RUNNING = orange (`#fd7e14`)
+- PENDING = grey (`#6c757d`)
+
+**Location in code:**
+- [src/flowweaver/utils.py](src/flowweaver/utils.py) — Full visualization module
+
+**Usage:**
+See [API_REFERENCE.md#visualization-utilities](#visualization-utilities) and [examples/visualize_dag.py](examples/visualize_dag.py)
+
+---
+
+### Thread Safety
+
+FlowWeaver includes explicit thread-safe locking:
 
 **Components:**
 - `Workflow._result_store` protected by RLock
@@ -239,15 +263,12 @@ FlowWeaver v0.3.2 includes explicit thread-safe locking:
 - [src/flowweaver/executors.py](src/flowweaver/executors.py#L16-L30) - Thread safety initialization
 - [src/flowweaver/executors.py](src/flowweaver/executors.py#L234-L236) - ThreadedExecutor context lock
 
-**Testing:**
-- [test_sde2_complete.py](test_sde2_complete.py) - TEST 2: Thread safety verification
-
 **Usage:**
 See [BEST_PRACTICES.md#concurrency--thread-safety](#concurrency--thread-safety)
 
 ---
 
-### Resumability (v0.3.2)
+### Resumability
 
 Tasks can resume from state store on restart - no re-execution:
 
@@ -267,10 +288,6 @@ Tasks can resume from state store on restart - no re-execution:
 - [src/flowweaver/executors.py](src/flowweaver/executors.py#L186-L190) - SequentialExecutor integration
 - [src/flowweaver/executors.py](src/flowweaver/executors.py#L311-L319) - ThreadedExecutor integration
 - [src/flowweaver/executors.py](src/flowweaver/executors.py#L470-L481) - AsyncExecutor integration
-
-**Testing:**
-- [test_sde2_complete.py](test_sde2_complete.py) - TEST 3: Resumability verification
-- [test_final_polish.py](test_final_polish.py#L100-L180) - Resumability under load
 
 **Usage:**
 See [DEPLOYMENT_GUIDE.md#state-store-configuration](#state-store-configuration)
@@ -301,9 +318,6 @@ def downstream(upstream=None):  # Receives result of upstream via **kwargs
 - [src/flowweaver/core.py](src/flowweaver/core.py#L595-L620) - Context building
 - [src/flowweaver/executors.py](src/flowweaver/executors.py#L160-L175) - Context injection in SequentialExecutor
 
-**Testing:**
-- [test_sde2_complete.py](test_sde2_complete.py) - TEST 1: XCom pattern verification
-
 **Usage:**
 See [API_REFERENCE.md#task-decorator](#task-decorator) and [BEST_PRACTICES.md#data-flow--context](#data-flow--context)
 
@@ -313,15 +327,18 @@ See [API_REFERENCE.md#task-decorator](#task-decorator) and [BEST_PRACTICES.md#da
 
 Located in [examples/](examples/) directory:
 
-- **[examples/parallel_run.py](examples/parallel_run.py)** - ThreadedExecutor with parallel tasks
-- **[examples/ml_pipeline.py](examples/ml_pipeline.py)** - ML workflow example
-- **[examples/etl_pipeline.py](examples/etl_pipeline.py)** - ETL workflow example
-- **[examples/async_aggregation.py](examples/async_aggregation.py)** - Async workflow example
+- **[examples/parallel_run.py](examples/parallel_run.py)** — ThreadedExecutor with parallel tasks
+- **[examples/ml_pipeline.py](examples/ml_pipeline.py)** — ML workflow example
+- **[examples/etl_pipeline.py](examples/etl_pipeline.py)** — ETL workflow example
+- **[examples/async_aggregation.py](examples/async_aggregation.py)** — Async workflow example
+- **[examples/complex_workflow.py](examples/complex_workflow.py)** — Multi-stage DAG demo
+- **[examples/full_run.py](examples/full_run.py)** — Complete end-to-end run
+- **[examples/visualize_dag.py](examples/visualize_dag.py)** — Mermaid.js visualization demo
 
 **Running examples:**
 ```bash
 python examples/parallel_run.py
-python examples/etl_pipeline.py
+python examples/visualize_dag.py
 ```
 
 ---
@@ -330,16 +347,14 @@ python examples/etl_pipeline.py
 
 ### Test Files
 
-- **[smoke_test.py](smoke_test.py)** - Basic functionality tests (4/4 pass)
-- **[test_comprehensive.py](tests/test_comprehensive.py)** - Full feature tests (18/18 pass)
-- **[test_sde2_complete.py](test_sde2_complete.py)** - All SDE-2 requirements (3/3 pass)
-- **[test_final_polish.py](test_final_polish.py)** - Thread safety + resumability (2/2 pass)
+- **[tests/test_core.py](tests/test_core.py)** — Core Task, Workflow, and DAG tests
+- **[tests/test_comprehensive.py](tests/test_comprehensive.py)** — Full feature and executor tests
+- **[tests/test_real_world.py](tests/test_real_world.py)** — Real-world workflow patterns
+- **[tests/test_stress.py](tests/test_stress.py)** — Stress and performance tests
 
 **Running tests:**
 ```bash
 pytest tests/ -v
-python smoke_test.py
-python test_sde2_complete.py
 ```
 
 ---
@@ -376,7 +391,7 @@ StateStore (persistence layer)
 4. Return completed workflow
 ```
 
-### Thread Safety (v0.3.2)
+### Thread Safety
 
 ```
 ThreadedExecutor
@@ -385,37 +400,6 @@ ThreadedExecutor
   ├── Context dict updates protected by RLock
   └── All state store operations thread-safe
 ```
-
----
-
-## SDE-2 Requirements Verification
-
-FlowWeaver v0.3.2 meets all SDE-2 production-grade requirements:
-
-### ✅ Requirement 1: Data Flow (XCom Pattern)
-- **Status**: Fully implemented
-- **Test**: [test_sde2_complete.py#L35-L85](test_sde2_complete.py#L35-L85) - TEST 1: PASS
-- **Code**: [src/flowweaver/core.py#L595-L620](src/flowweaver/core.py#L595-L620) - Context building
-
-### ✅ Requirement 2: Thread Safety (Explicit Locking)
-- **Status**: Fully implemented with RLock
-- **Test**: [test_sde2_complete.py#L88-L153](test_sde2_complete.py#L88-L153) - TEST 2: PASS
-- **Code**: [src/flowweaver/core.py#L320-L321](src/flowweaver/core.py#L320-L321) - Result store lock
-
-### ✅ Requirement 3: Resumability (State Store)
-- **Status**: Fully integrated in all executors
-- **Test**: [test_sde2_complete.py#L156-L229](test_sde2_complete.py#L156-L229) - TEST 3: PASS
-- **Code**: [src/flowweaver/executors.py#L186-L190](src/flowweaver/executors.py#L186-L190) - Resumability integration
-
-### ✅ Requirement 4: Production Architecture
-- **Status**: Modular design with pluggable components
-- **Components**: Workflow, Executors (Strategy), StateStore (ABC)
-- **Documentation**: Entire DEPLOYMENT_GUIDE.md
-
-### ✅ Requirement 5: API Design
-- **Status**: Clean, intuitive @task decorator
-- **Testing**: Task functions remain callable
-- **Example**: See [API_REFERENCE.md#task-decorator](#task-decorator)
 
 ---
 
@@ -446,6 +430,9 @@ FlowWeaver v0.3.2 meets all SDE-2 production-grade requirements:
 
 **Handle thread safety**
 → [BEST_PRACTICES.md#concurrency--thread-safety](#concurrency--thread-safety)
+
+**Visualise a workflow DAG**
+→ [API_REFERENCE.md#visualization-utilities](#visualization-utilities)
 
 **Migrate from another framework**
 → [examples/](examples/) - See conversion strategies
@@ -494,47 +481,54 @@ curl http://localhost:5000/health
 
 ## Support & Resources
 
-- **Issues**: https://github.com/your-org/flowweaver/issues
-- **Discussions**: https://github.com/your-org/flowweaver/discussions
-- **Email**: support@example.com
+- **Issues**: https://github.com/imobscure/flowweaver/issues
+- **Discussions**: https://github.com/imobscure/flowweaver/discussions
 
 ---
 
 ## Version History
 
-### v0.3.2 (Current) - February 2026
-✅ Production Ready - SDE-2 Grade Quality
+### v0.2.2 (Current) - March 2026
+✅ Production Ready
 
 **New:**
-- Thread-safe result store with explicit RLock
-- @task decorator preserves function callability
-- Resumability integrated in all executors
-- Comprehensive production documentation
+- Resiliency at scale — corrupted JSON state files handled gracefully
+- Chain-based visualization — Mermaid.js supports 5,000+ task DAGs
+- CI test matrix across Python 3.9–3.12
+- CHANGELOG.md
+
+### v0.2.0 - February 2026
+
+**New:**
+- Mermaid.js DAG visualization (`export_mermaid`, `save_mermaid`, `view_mermaid`)
+- Interactive browser-based workflow diagrams with colour-coded task statuses
+- Fixed async executor context injection
+- 7 example scripts including visualization demo
 
 **Improved:**
-- Performance tuning guide
-- Operational runbooks
-- Error handling examples
+- Comprehensive production documentation (all docs updated to v0.2.0)
+- 31 passing tests across 4 test files
 
-### v0.3.1 - January 2026
-- Persistence layer (JSONStateStore, SQLiteStateStore)
-- XCom pattern enhancement
-
-### v0.3.0 - December 2025
-- Initial release with core features
+### v0.1.0 - Initial
+- Core task and workflow orchestration
+- Sequential, threaded, and async execution
+- Cycle detection and topological sorting
+- JSONStateStore and SQLiteStateStore persistence
+- XCom data flow pattern
 
 ---
 
 ## Summary
 
-FlowWeaver v0.3.2 is a **production-ready workflow orchestration framework** with:
+FlowWeaver v0.2.0 is a **production-ready workflow orchestration framework** with:
 
-✅ **Three core execution strategies** - Sequential, Threaded, Async  
-✅ **Pluggable persistence** - JSON or SQLite state stores  
-✅ **Thread-safe operations** - Explicit RLock protection  
-✅ **Resumable workflows** - Skip completed tasks on restart  
-✅ **Clean API** - @task decorators that preserve testability  
-✅ **Professional documentation** - Deployment, operations, best practices  
+✅ **Three core execution strategies** — Sequential, Threaded, Async  
+✅ **Built-in DAG visualization** — Mermaid.js with colour-coded task statuses  
+✅ **Pluggable persistence** — JSON or SQLite state stores  
+✅ **Thread-safe operations** — Explicit RLock protection  
+✅ **Resumable workflows** — Skip completed tasks on restart  
+✅ **Clean API** — @task decorators that preserve testability  
+✅ **Professional documentation** — Deployment, operations, best practices  
 
 **Get started**: Start with examples, then review API_REFERENCE.md for your use case.
 
@@ -544,6 +538,6 @@ FlowWeaver v0.3.2 is a **production-ready workflow orchestration framework** wit
 
 ---
 
-**Documentation Version**: 0.3.2  
-**Last Updated**: February 2026  
+**Documentation Version**: 0.2.2  
+**Last Updated**: March 2026  
 **Status**: Complete and Production Ready ✅

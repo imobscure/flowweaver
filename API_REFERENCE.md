@@ -1,4 +1,4 @@
-# FlowWeaver v0.1.2 - Complete API Reference
+# FlowWeaver v0.2.2 - Complete API Reference
 
 ## Table of Contents
 
@@ -8,6 +8,7 @@
 4. [State Storage](#state-storage)
 5. [Enums & Types](#enums--types)
 6. [Exceptions](#exceptions)
+7. [Visualization Utilities](#visualization-utilities)
 
 ---
 
@@ -756,5 +757,100 @@ except Exception as e:
 
 ---
 
-**Version**: 0.1.2 - Production Ready
-**Last Updated**: February 2026
+## Visualization Utilities
+
+Module: `flowweaver.utils`
+
+Generate, save, and view Mermaid.js DAG diagrams with colour-coded task statuses.
+
+### `export_mermaid`
+
+```python
+export_mermaid(workflow: Workflow, orientation: str = "TD") -> str
+```
+
+Export a workflow DAG as a Mermaid.js graph definition string. Generates node declarations, directed edges from the dependency map, and `classDef` directives that colour nodes by their current `TaskStatus`.
+
+**Parameters:**
+- `workflow` (Workflow, required): The workflow instance to export
+- `orientation` (str, default=`"TD"`): Graph direction — `"TD"` (top-down), `"LR"` (left-right), `"BT"` (bottom-top), `"RL"` (right-left)
+
+**Returns:** Multi-line Mermaid graph string
+
+**Raises:** `ValueError` if orientation is invalid
+
+**Status colours:**
+
+| Status | Colour | Hex |
+|--------|--------|-----|
+| COMPLETED | Green | `#28a745` |
+| FAILED | Red | `#dc3545` |
+| RUNNING | Orange | `#fd7e14` |
+| PENDING | Grey | `#6c757d` |
+
+**Example:**
+```python
+from flowweaver import Workflow, Task, SequentialExecutor
+from flowweaver.utils import export_mermaid
+
+wf = Workflow("my_pipeline")
+wf.add_task(Task("extract", fn=lambda: "data"))
+wf.add_task(Task("transform", fn=lambda: "ok"), depends_on=["extract"])
+
+SequentialExecutor().execute(wf)
+print(export_mermaid(wf, orientation="LR"))
+```
+
+---
+
+### `save_mermaid`
+
+```python
+save_mermaid(workflow: Workflow, filepath: str, orientation: str = "TD") -> None
+```
+
+Write the Mermaid graph to a file. Convenience wrapper around `export_mermaid`.
+
+**Parameters:**
+- `workflow` (Workflow, required): The workflow instance to export
+- `filepath` (str, required): Destination file path (created or overwritten)
+- `orientation` (str, default=`"TD"`): Graph direction
+
+**Raises:** `ValueError` (invalid orientation), `OSError` (file write failure)
+
+**Example:**
+```python
+from flowweaver.utils import save_mermaid
+
+save_mermaid(wf, "pipeline_diagram.md", orientation="LR")
+# → Mermaid diagram saved to 'pipeline_diagram.md'.
+```
+
+---
+
+### `view_mermaid`
+
+```python
+view_mermaid(workflow: Workflow, orientation: str = "TD") -> Path
+```
+
+Open an interactive Mermaid diagram in the default web browser. Creates a self-contained temporary HTML file that loads mermaid.js from the jsDelivr CDN.
+
+**Parameters:**
+- `workflow` (Workflow, required): The workflow instance to visualise
+- `orientation` (str, default=`"TD"`): Graph direction
+
+**Returns:** `pathlib.Path` to the temporary HTML file
+
+**Example:**
+```python
+from flowweaver.utils import view_mermaid
+
+path = view_mermaid(wf, orientation="LR")
+# → Opens colourful DAG in browser automatically
+```
+
+---
+
+**Version**: 0.2.2 - Production Ready
+**Last Updated**: March 2026
